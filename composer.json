@@ -1,8 +1,0 @@
-{
-    "name": "wishlist-klaviyo-bridge/wishlist_klaviyo_bridge.php",
-    "description": "Adds a Klaviyo integration to the wishlist plugin",
-    "type": "wordpress-plugin",
-    "require": {
-        "guzzlehttp/guzzle": "^6.3"
-    }
-}

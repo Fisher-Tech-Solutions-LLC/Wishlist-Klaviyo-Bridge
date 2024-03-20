@@ -11,11 +11,6 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-
-require_once plugin_dir_path(__FILE__) . 'vendor/autoload.php';
-
-use GuzzleHttp\Client;
-
 $yith = 'yith-woocommerce-wishlist/init.php';
 $klaviyo = 'klaviyo/klaviyo.php';
 
@@ -87,56 +82,68 @@ if (is_plugin_active($yith) && is_plugin_active($klaviyo) ) {
 
         $product_value = get_post_meta($product_id, '_price', true);
 
-        $authorization = 'Klaviyo-API-Key ' . $private_api_key;
+        $time = date('Y-m-d\TH:i:sP');
+
+        $categories = array();
+        $categories_array = get_the_terms($product_id, 'product_cat');
+        if ($categories_array && !is_wp_error($categories_array)) {
+            $categories = wp_list_pluck($categories_array, 'name');
+        }
 
         $time = date('Y-m-d\TH:i:sP');
 
-        $client = new \GuzzleHttp\Client();
+        $request_args = array(
+            'body' => json_encode(array(
+                'data' => array(
+                    'type' => 'event',
+                    'attributes' => array(
+                        'properties' => array(
+                            'ProductId' => $product_id,
+                            'ProductName' => get_the_title($product_id),
+                            'ProductURL' => get_the_permalink($product_id),
+                            'ProductImage' => get_the_post_thumbnail_url($product_id),
+                            'ProductValue' => $product_value,
+                            'ProductCategories' => implode(', ', $categories),
+                        ),
+                        'time' => $time,
+                        'value' => $product_value,
+                        'value_currency' => 'USD',
+                        'metric' => array(
+                            'data' => array(
+                                'type' => 'metric',
+                                'attributes' => array(
+                                    'name' => 'Added To Wishlist',
+                                ),
+                            ),
+                        ),
+                        'profile' => array(
+                            'data' => array(
+                                'type' => 'profile',
+                                'attributes' => array(
+                                    'email' => $customer_email,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )),
+            'headers' => array(
+                'Authorization' => 'Klaviyo-API-Key ' . $private_api_key,
+                'accept' => 'application/json',
+                'content-type' => 'application/json',
+                'revision' => '2024-02-15',
+            ),
+        );
 
-        $response = $client->request('POST', 'https://a.klaviyo.com/api/events/', [
-          'body' => '{"data":
-            {"type":"event","attributes":
-                {"properties":
-                    {
-                        "ProductId":"' . $product_id . '",
-                        "ProductName":"' . get_the_title($product_id) . '",
-                        "ProductURL":"' . get_the_permalink($product_id) . '",
-                        "ProductImage":"' . get_the_post_thumbnail_url($product_id) . '",
-                        "ProductValue":"' . $product_value . '"
-                    },
-                    "time":"' . $time .  '",
-                    "value":' . $product_value . ',
-                    "value_currency":"USD",
-                    "metric":
-                        {"data":
-                            {"type":"metric","attributes":
-                                {"name":"Added To Wishlist"}
-                            }
-                        },
-                        "profile":
-                            {"data":
-                                {"type":"profile","attributes":
-                                    {"email":"' . $customer_email . '"}
-                                }
-                            }
-                        }
-                    }
-                }',
-          'headers' => [
-            'Authorization' => $authorization,
-            'accept' => 'application/json',
-            'content-type' => 'application/json',
-            'revision' => '2024-02-15',
-          ],
-        ]);
+        $response = wp_remote_post('https://a.klaviyo.com/api/events/', $request_args);
 
-        $body = $response->getBody();
-
-        $data = json_decode($body);
-
-        error_log(print_r($data, true));
+        if (!is_wp_error($response)) {
+            $body = wp_remote_retrieve_body($response);
+            $data = json_decode($body);
+            error_log(print_r($data, true));
+        }
     }
-    
+
 } else {
     add_action( 'admin_notices', 'klaviyo_wishlist_bridge_notice' );
 }
